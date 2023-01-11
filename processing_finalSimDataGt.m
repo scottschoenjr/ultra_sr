@@ -1,0 +1,261 @@
+% *************************************************************************
+%
+% ULTRA-SR Challenge Code
+%
+%   Script for processing data from the 2022 IUS Ultrasound Localization
+%   and Tracking Algorithms for Super-Resolution (https://ultra-sr.com/). 
+%   Functions and toolboxes loaded from './inc/' subdirectory. Challenge 
+%   datasets can be accessed here:
+%   https://secure-web.cisco.com/1QpRd8GQGWCR6tBAmLtVe_JdrGn77OuhQUFMrzSdRYapTaEAzNeRwTdctPy-Ha9WTa-s2EX9YQbXYF-QWM3crStPSmcOte_jDhaM5oHxOpv2-tj8yzMiaInoTWc69364qZm-4uzxgJqkQRLCpne9YCtmOwOKG3EERFIgjnYtUxbdUdUaKEkyAJyEJDR9L5ScVDxjnrVEC3OISLAEOq9h1060J97MvUtZm1XpnWj14ujtGmh1JsldceClK54pdPQ0Ta5GPtmaiRmkaOpUKZFJz6RbOxC74Uefc1Z6qJt6iiKPGfnyEhGSNB-5mc_X0JGXE/https%3A%2F%2Fzenodo.org%2Frecord%2F7271766
+%
+%   Settings files (setParametersSim) are those used for challenge
+%   submission, but other datasets can be processed or settings used.
+%
+%   This script uses code from:
+%      - quiver_by_plot (by L Chi, no license)
+%      - plotboxpos (by Kelly Kearney, MIT license)
+%      - simpletracker (by Jean-Yves Tinevez, BSD 3 license)
+%   
+% If used, please consider citing
+%   [1] "Morphological Reconstruction Improves Microvessel Mapping 
+%       in Super-Resolution Ultrasound". IEEE T. UFFC 68(6) (2021) 
+%       DOI: 10.1109/TUFFC.2021.3057540
+%   [2] "MR for ULTRA-SR: Improved Localization with Morphological Image 
+%       Processing". IEEE IUS Proc. (2022) 
+%       DOI: 10.1109/IUS54386.2022.9957276
+%   [3] US Patent Application No. US 2022/0011270 "Systems and methods for
+%       ultrasound imaging and focusing"
+%
+%         Scott Schoen Jr | MGH-CURT | sschoenjr@mgh.harvard.edu
+%
+% *************************************************************************
+
+close all
+clear all
+clc
+
+DATA_PATH = './'; % Location of final challenge data
+addpath( genpath( './inc/' ) );
+
+% ---------- Options ----------------
+
+% Select sataset
+folderNum = 1;
+DATA_FRACTION = [0.0, 1.0];
+
+% Plotting
+plotFrames = false;
+plotPeaks = false;
+
+% Tracking
+PLOT_TRACKING = false;
+
+% -----------------------------------
+
+% Get positions
+switch folderNum
+    case 1
+        dataDir = sprintf( '%ssimu1/', DATA_PATH );
+        xLimits = [-7, 7];
+        yLimits = [25, 37];
+        setParametersSim1;
+    case 2
+        dataDir = sprintf( '%ssimu1/', DATA_PATH );
+        xLimits = [-20, 20];
+        yLimits = [62, 92];
+        setParametersSim2;
+end
+
+
+% Get relevant files
+vidFile = sprintf( '%snet_%03d.avi', dataDir, folderNum+1 );
+metaFile = sprintf( '%smetadata.mat', dataDir );
+
+% Load metadata
+load(metaFile);
+px = PxSet; % Rename
+xVec = px.mapX;
+zVec = px.mapZ;
+[x, z] = meshgrid( xVec, zVec );
+
+imgFreq = SimSet.centre_frequency;
+lambda = 1540./imgFreq;
+Fs = SimSet.sampling_frequency;
+dt = 1./Fs;
+
+% Read video file
+vid = VideoReader(vidFile);
+video = read(vid);
+
+% Convert to black and white
+numFrames = size( video, 4 );
+Nx = size( video, 2 );
+Nz = size( video, 1 );
+bwVideo = zeros( numFrames, Nz, Nx );
+for fCount = 1 : numFrames
+    bwFrame = rgb2gray(video(:,:,:,fCount));
+    bwVideo( fCount, :, : ) = bwFrame;
+end
+
+% Add noise if required
+if filtOpts.noise > 0
+    nL = filtOpts.noise./2;
+   bwVideo = ( 1 + nL.*randn(size(bwVideo)) ).*bwVideo;
+end
+
+% Keep only desired portion of data
+totalFrames = size( bwVideo, 1 );
+startFrame = ceil( max( DATA_FRACTION(1).*totalFrames, 1 ) );
+endFrame = floor( min( DATA_FRACTION(2).*totalFrames, totalFrames ) );
+bwVideo = bwVideo( startFrame : endFrame, :, : ); 
+numFrames = endFrame - startFrame + 1;
+
+% Set SVD Values
+firstSvdVal = filtOpts.minSVD;
+lastSvdVal = round( filtOpts.maxSVD.*(endFrame - startFrame)./totalFrames );
+SVD_VALS = [firstSvdVal, lastSvdVal];
+
+% SVD Filter
+bwVideoRaw = bwVideo;
+[bwVideo, Svals] = svdFilt( bwVideoRaw, SVD_VALS );
+
+% Deconvolution
+bwVideoSvd = bwVideo;
+if filtOpts.iter > 0
+        
+    bwVideoDeconv = 0.*bwVideo;
+    
+    sx = filtOpts.psfX.*lambda;
+    sz = filtOpts.psfZ.*lambda;
+    z0 = mean(zVec);
+    psfDim = 1.5.*max( sx, sz );
+    
+    xLVec = -psfDim : px.dx : psfDim;
+    zLVec = -psfDim : px.dz : psfDim;
+    [xL, zL] = meshgrid( xLVec, zLVec );
+    psf = exp( -( (xL./sx).^(2) + (zL./sz).^(2) ) );
+    parfor fCount = 1 : numFrames
+        
+        frame = squeeze(bwVideo( fCount, :, : ));
+        deconvFrame = deconvlucy( frame, psf, filtOpts.iter );
+        bwVideoDeconv( fCount, :, : ) = deconvFrame;
+        
+    end
+else
+    bwVideoDeconv = bwVideo;
+end
+
+% Plot individual frames if desired
+if plotFrames
+    for frameCount = 1 : numFrames
+        
+        figure(999);
+        clf;
+        % Raw Frame
+        subplot( 1, 3, 1 );
+        ax1 = gca();
+        title( ax1, sprintf('Raw Frame %3d', frameCount) );
+        imagesc( squeeze(bwVideoRaw(frameCount,:,:)) );
+        % SVD Filtered
+        subplot( 1, 3, 2 );
+        ax2 = gca();
+        title( ax2, ...
+            sprintf('SVD [%d, %d]', filtOpts.minSVD, filtOpts.maxSVD) );
+        imagesc( squeeze(bwVideo(frameCount,:,:)) );
+        % Deconvolved
+        subplot( 1, 3, 3 );
+        ax3 = gca();
+        imagesc( squeeze(bwVideoDeconv(frameCount,:,:)) );
+        drawnow();
+        pause(0.1);
+        
+        linkaxes([ax1, ax2, ax3]);
+        
+    end
+end
+
+% If zero iterations were considered for the deconvolution, then use the
+% SVD-filtered data only
+if filtOpts.iter <= 0
+    frameData = bwVideoSvd;
+else
+    frameData = bwVideoDeconv;
+end
+
+clear frame;
+
+% Initialize structure
+frame(numFrames).xPeaks = [];
+frame(numFrames).zPeaks = [];
+frame(numFrames).vxPeaks = [];
+frame(numFrames).vzPeaks = [];
+frame(numFrames).t = [];
+
+% Global matrix of peaks
+peakMatMR = zeros(1E4, 5);
+peakMatThresh = zeros(1E4, 5);
+
+rowIndexMR = 1;
+rowIndexThresh = 1;
+
+% Cell structure for simpletracker
+trackStructMr{numFrames} = [0, 0, 0];
+
+% Get peaks for each frame
+for fCount = 1 : numFrames    
+
+    % Get peaks for that frame
+    rawFrame = squeeze( bwVideoRaw( fCount, :, : ) );
+    frame = squeeze( frameData( fCount, :, : ) );
+    
+    % Normalize each
+    frame = ( frame - min(frame(:)) )./( max(frame(:)) - min(frame(:)) );
+    
+    tic;
+    [xPeaks, zPeaks, peakVals] = ...
+        isolateBubbles(x, z, frame, pkOpts);
+    peakFindingTime = toc;
+    
+    % Store to global matrix
+    startInd = rowIndexMR;
+    endInd = rowIndexMR + length(xPeaks) - 1;
+    peakMatMR( startInd : endInd, 1 ) = fCount;
+    peakMatMR( startInd : endInd, 2 ) = xPeaks;
+    peakMatMR( startInd : endInd, 3 ) = zPeaks;
+    peakMatMR( startInd : endInd, 6 ) = peakVals;
+    
+    rowIndexMR = endInd + 1;
+
+    % Store to stucture
+    trackStructMr{fCount} = [ xPeaks', zPeaks' ];
+           
+    % Save particle positions for this frame
+    frameStats(fCount).numPeaksMr = length( xPeaks );
+    frameStats(fCount).peakFindingTime = peakFindingTime;
+    
+end
+
+% Remove empty entries
+peakMatMR( rowIndexMR : end, : ) = [];
+
+%% Display Stats
+clc;
+
+fprintf( '---------- MR Statistics (h = %01.2f) ----------\n', ...
+    pkOpts.offset );
+fprintf( 'Peaks Per Frame: %2.1f +/- %2.1f\n', ...
+    mean([frameStats(:).numPeaksMr]), std([frameStats(:).numPeaksMr]) );
+fprintf( '    Comp. Time: %3.1f +/- %2.1f ms\n\n', ...
+    1E3.*mean([frameStats(:).peakFindingTime]), ...
+    1E3.*std([frameStats(:).peakFindingTime]) );
+
+%% Save if desired
+
+saveFilename = sprintf( 'simData%d_h%0.3f_i%02.1f_f[%0.2f,%0.2f].mat', ...
+    folderNum, pkOpts.offset, pkOpts.interpFactor, ...
+    DATA_FRACTION(1), DATA_FRACTION(2) );
+save( saveFilename );
+
+%% Plot Results
+
+plotting_finalSimData;
