@@ -4,7 +4,7 @@ Code used to generate results presented as part of the Ultrasound Localization a
 
 ## Data and Code Usage
 - The challenge datasets can be downloaded here:  [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7271766.svg)](https://doi.org/10.5281/zenodo.7271766)
-- The filtering parameters are defined in the <samp>setParameters<\samp> files
+- The filtering parameters are defined in the <samp>setParameters<samp> files
 
 ## Citations
 Results were published in:
