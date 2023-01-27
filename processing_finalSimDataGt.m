@@ -6,7 +6,7 @@
 %   and Tracking Algorithms for Super-Resolution (https://ultra-sr.com/). 
 %   Functions and toolboxes loaded from './inc/' subdirectory. Challenge 
 %   datasets can be accessed here:
-%   https://secure-web.cisco.com/1QpRd8GQGWCR6tBAmLtVe_JdrGn77OuhQUFMrzSdRYapTaEAzNeRwTdctPy-Ha9WTa-s2EX9YQbXYF-QWM3crStPSmcOte_jDhaM5oHxOpv2-tj8yzMiaInoTWc69364qZm-4uzxgJqkQRLCpne9YCtmOwOKG3EERFIgjnYtUxbdUdUaKEkyAJyEJDR9L5ScVDxjnrVEC3OISLAEOq9h1060J97MvUtZm1XpnWj14ujtGmh1JsldceClK54pdPQ0Ta5GPtmaiRmkaOpUKZFJz6RbOxC74Uefc1Z6qJt6iiKPGfnyEhGSNB-5mc_X0JGXE/https%3A%2F%2Fzenodo.org%2Frecord%2F7271766
+%   https://doi.org/10.5281/zenodo.7271766
 %
 %   Settings files (setParametersSim) are those used for challenge
 %   submission, but other datasets can be processed or settings used.
@@ -41,7 +41,7 @@ addpath( genpath( './inc/' ) );
 
 % Select sataset
 folderNum = 1;
-DATA_FRACTION = [0.0, 1.0];
+DATA_FRACTION = [0.0, 0.25];
 
 % Plotting
 plotFrames = false;
@@ -193,7 +193,6 @@ frame(numFrames).t = [];
 
 % Global matrix of peaks
 peakMatMR = zeros(1E4, 5);
-peakMatThresh = zeros(1E4, 5);
 
 rowIndexMR = 1;
 rowIndexThresh = 1;
@@ -258,4 +257,4 @@ save( saveFilename );
 
 %% Plot Results
 
-plotting_finalSimData;
+plotting_finalSimDataGt;

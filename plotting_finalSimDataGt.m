@@ -7,25 +7,36 @@ PLOT_TRACKING = false;
 
 % Set inset number
 insetNum = 1;
-
-% Set frame Nos. to Plot
 dataFraction = [0.00, 0.02];
 
-rawPeaks = peakMatMR;
-rawTracks = trackStructMr;
-rawFrames = numFrames;
+% Set frame Nos. to Plot (if the whole dataset was prcessed)
+if ( DATA_FRACTION(2) - DATA_FRACTION(1) ) >= 1
+        
+    % Save full sets
+    rawPeaks = peakMatMR;
+    rawTracks = trackStructMr;
+    rawFrames = numFrames;
+    
+    % Get frames of time range of interest
+    Nf = size( bwVideo, 1 );
+    startFrame = round( dataFraction(1).*Nf + 1);
+    endFrame = round( dataFraction(2).*Nf - 1);
+    numFrames = endFrame - startFrame + 1;
+    
+    % Keep only those in desired region
+    frameVals = peakMatMR( :, 1 );
+    keepInds = frameVals >= startFrame & frameVals <= endFrame;
+    peakMatMR = rawPeaks( keepInds, :, : );
+    trackStructMr = rawTracks( startFrame : endFrame );
 
-% Get total frames
-Nf = size( bwVideo, 1 );
-startFrame = round( dataFraction(1).*Nf + 1);
-endFrame = round( dataFraction(2).*Nf - 1);
-numFrames = endFrame - startFrame + 1;
+else
+    
+    % Otherwise just keep it all
+    numFrames = size(bwVideo, 1);
+    
+end
 
-% Keep only those in desired region
-frameVals = peakMatMR( :, 1 );
-keepInds = frameVals >= startFrame & frameVals <= endFrame;
-peakMatMR = rawPeaks( keepInds, :, : );
-trackStructMr = rawTracks( startFrame : endFrame );
+
 
 % Retain peaks only in certain range of amplitudes
 peakAmps = peakMatMR( :, 6 );
